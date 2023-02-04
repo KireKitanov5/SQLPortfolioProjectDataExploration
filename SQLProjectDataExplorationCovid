@@ -1,0 +1,163 @@
+SELECT *
+FROM SQLDataExploration.dbo.CovidDeaths
+ORDER BY 3,4
+
+--SELECT *
+--FROM SQLDataExploration.dbo.CovidVaccinations
+--ORDER BY 3,4
+
+--SELECT DATA THAT I AM GOING TO USE
+SELECT [location], [date], total_cases, new_cases, total_deaths, population
+FROM SQLDataExploration.dbo.CovidDeaths
+ORDER BY 1,2
+
+--Total Cases VS Total Deaths
+SELECT location, date, total_cases, total_deaths, cast (total_deaths as float)/cast(total_cases as float)*100 AS death_percentage
+FROM SQLDataExploration.dbo.CovidDeaths
+WHERE location LIKE '%states%'
+ORDER BY 1,2
+
+--Total Cases VS Population
+SELECT location, date, population, total_cases, cast (total_cases as float)/cast(population as float)*100 AS PercentPopulationInfected
+FROM SQLDataExploration.dbo.CovidDeaths
+--WHERE location LIKE '%states%'
+ORDER BY 1,2
+
+--Highest Infection Rate compared to Population
+Select Location, Population, MAX (cast(total_cases as float)) as HighestInfectionCount,  Max((cast(total_cases as float))/cast(population as float))*100 as PercentPopulationInfected
+From SQLDataExploration.dbo.CovidDeaths
+--Where location like '%states%'
+Group by Location, Population
+order by PercentPopulationInfected desc
+
+--Countries with Highest Death Count per Population
+Select Location, Population, MAX (cast(total_cases as float)) as HighestInfectionCount,  Max((cast(total_cases as float))/cast(population as float))*100 as PercentPopulationInfected
+From SQLDataExploration.dbo.CovidDeaths
+--Where location like '%states%'
+Group by Location, Population
+order by PercentPopulationInfected desc
+
+-- Countries with Highest Death Count per Population
+Select Location, MAX(cast(Total_deaths as int)) as TotalDeathCount
+From SQLDataExploration.dbo.CovidDeaths
+--Where location like '%states%'
+Where continent is not null 
+Group by Location
+order by TotalDeathCount desc
+
+-- Contintents with the highest death count per population
+Select continent, MAX(cast(Total_deaths as int)) as TotalDeathCount
+From SQLDataExploration.dbo.CovidDeaths
+--Where location like '%states%'
+Where continent is not null 
+Group by continent
+order by TotalDeathCount desc
+
+-- GLOBAL NUMBERS, Death Percentage per Country
+Select date, SUM(new_cases) as total_cases, SUM(cast(new_deaths as float)) as total_deaths, SUM(cast(new_deaths as float))/SUM(New_Cases)*100 as DeathPercentage
+From SQLDataExploration.dbo.CovidDeaths
+--Where location like '%states%'
+where continent is not null 
+Group By date
+Order by 1,2
+
+-- GLOBAL NUMBERS, Death Percentage in the World
+Select SUM(new_cases) as total_cases, SUM(cast(new_deaths as float)) as total_deaths, SUM(cast(new_deaths as float))/SUM(New_Cases)*100 as DeathPercentage
+From SQLDataExploration.dbo.CovidDeaths
+--Where location like '%states%'
+where continent is not null 
+--Group By date
+Order by 1,2
+
+Select *
+From SQLDataExploration.dbo.CovidDeaths 
+JOIN SQLDataExploration.dbo.CovidVaccinations
+    ON SQLDataExploration.dbo.CovidDeaths.location = SQLDataExploration.dbo.CovidVaccinations.location
+       AND SQLDataExploration.dbo.CovidDeaths.date = SQLDataExploration.dbo.CovidVaccinations.date
+       
+Select *
+From SQLDataExploration.dbo.CovidDeaths dea
+JOIN SQLDataExploration.dbo.CovidVaccinations vac
+    ON dea.location = vac.location
+       AND dea.date = vac.date
+
+--TOTAL POPULATION VS TOTAL VACCINATION
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+    FROM SQLDataExploration.dbo.CovidDeaths dea
+    JOIN SQLDataExploration.dbo.CovidVaccinations vac
+       ON dea.location = vac.location
+       AND dea.date = vac.date
+       WHERE dea.continent is not NULL
+order by 2, 3    
+
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (Partition By dea.location order by dea.location, dea.date) AS RollingPeopleVaccinated
+    FROM SQLDataExploration.dbo.CovidDeaths dea
+    JOIN SQLDataExploration.dbo.CovidVaccinations vac
+       ON dea.location = vac.location
+       AND dea.date = vac.date
+       WHERE dea.continent is not NULL
+order by 2, 3    
+
+--Using CTE in the previous Query
+WITH PopvsVac (continent, location, date, population, new_vaccinations, RollingPeopleVaccinated)
+AS
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (Partition By dea.location order by dea.location, dea.date) AS RollingPeopleVaccinated
+--, (RollingPeopleVaccinated / population)*100
+    FROM SQLDataExploration.dbo.CovidDeaths dea
+    JOIN SQLDataExploration.dbo.CovidVaccinations vac
+       ON dea.location = vac.location
+       AND dea.date = vac.date
+       WHERE dea.continent is not NULL
+--order by 2, 3   
+) 
+SELECT *, CONVERT(float,RollingPeopleVaccinated) / CONVERT(float,population)*100
+FROM PopvsVac 
+
+--TEMP TABLE
+DROP TABLE IF EXISTS #PercentPopulationVaccinated
+CREATE TABLE #PercentPopulationVaccinated
+(
+    Continent nvarchar(255),
+    Location nvarchar(255),
+    Date datetime,
+    Population numeric,
+    New_vaccinations numeric,
+    RollingPeopleVaccinated numeric
+)
+
+INSERT INTO #PercentPopulationVaccinated
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (Partition By dea.location order by dea.location, dea.date) AS RollingPeopleVaccinated
+--, (RollingPeopleVaccinated / population)*100
+    FROM SQLDataExploration.dbo.CovidDeaths dea
+    JOIN SQLDataExploration.dbo.CovidVaccinations vac
+       ON dea.location = vac.location
+       AND dea.date = vac.date
+       --WHERE dea.continent is not NULL
+--order by 2, 3   
+SELECT *, CONVERT(float,RollingPeopleVaccinated) / CONVERT(float,population)*100
+FROM #PercentPopulationVaccinated
+       
+--Creating view for later visualizations
+Create View PercentPopulationVaccinated AS
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
+, SUM(vac.new_vaccinations) OVER (Partition By dea.location order by dea.location, dea.date) AS RollingPeopleVaccinated
+--, (RollingPeopleVaccinated / population)*100
+    FROM SQLDataExploration.dbo.CovidDeaths dea
+    JOIN SQLDataExploration.dbo.CovidVaccinations vac
+       ON dea.location = vac.location
+       AND dea.date = vac.date
+       WHERE dea.continent is not NULL
+       --Order By 2, 3   
+
+
+
+
+
+
+
+
+
